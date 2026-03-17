@@ -3,6 +3,13 @@ using TMPro;
 using Unity.VisualScripting;
 using UnityEngine;
 
+public enum ClickableType
+{
+    DrawPile,
+    DiscardPile,
+    PlayerCard
+}
+
 // This class don't hold game's rules but only the properties of the card and the method to flip it. (e.g. the value, the color, the sprite, animation, etc.)
 public class Card : MonoBehaviour
 {
@@ -11,12 +18,13 @@ public class Card : MonoBehaviour
     [SerializeField] private SpriteRenderer cardSpriteRenderer;
     [SerializeField] private GameObject cardBack;
     [SerializeField] private GameObject cardFront;
-
+    public ClickableType clickableType;
     public bool IsFaceUp {get; private set;}
     public int Value => cardData != null ? cardData.value : 0;
 
     [Header("Runtime data")]
     public CardSO cardData {get; private set;}
+    public Player owner;
 
     public void Init(CardSO _data)
     {

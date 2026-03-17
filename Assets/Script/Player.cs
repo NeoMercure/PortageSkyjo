@@ -10,18 +10,34 @@ public class Player
     // Same list! Under interface and read-only. The player remains in control of their hand
     public IReadOnlyList<Card> Hand => hand;
     public int Score => CalculateScore();
+    public int allScore = 0;
 
     // Add a card to the player's hand
     public void AddCard(Card _card)
     {
         if (_card == null) return;
+
+        _card.clickableType = ClickableType.PlayerCard;
+        _card.owner = this;
+
         hand.Add(_card);
     }
 
-    // Remove a card from the player's hand : Add in discardPile
+    public void AddCardAt(int _id, Card _card)
+    {
+        if (_card == null) return;
+
+        _card.clickableType = ClickableType.PlayerCard;
+        _card.owner = this;
+
+        hand[_id] = _card;
+    }
+
+    // Remove a card from the player's hand
     public void RemoveCard(Card _card)
     {
         hand.Remove(_card);
+        _card.FlipCard();
     }
     
     // Flip a card in the player's hand
@@ -31,6 +47,18 @@ public class Player
         if (hand.Contains(_card) && !_card.IsFaceUp)
         {
             _card.FlipCard();
+        }
+    }
+
+    public void FlipAllCard()
+    {
+        foreach (Card card in hand)
+        {
+            // We can only flip a card if it's not already face up
+            if (!card.IsFaceUp)
+            {
+                card.FlipCard();
+            }
         }
     }
 
@@ -48,6 +76,11 @@ public class Player
         }
 
         return score;
+    }
+
+    public int GetCardIndex(Card _card)
+    {
+        return hand.IndexOf(_card);
     }
 
     public void SetPlayerName(string _str)

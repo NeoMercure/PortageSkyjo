@@ -3,11 +3,15 @@ using UnityEngine;
 
 public class Deck : MonoBehaviour
 {
-    private readonly List<Card> drawPile = new List<Card>();
-    private readonly List<Card> discardPile = new List<Card>();
+    // private readonly List<Card> drawPile = new List<Card>();
+    // private readonly List<Card> discardPile = new List<Card>();
+
+    public List<Card> drawPile = new List<Card>();
+    public List<Card> discardPile = new List<Card>();
+    public Card TopDiscard => discardPile.Count > 0 ? discardPile[^1] : null;
 
     [SerializeField] private Card cardPrefab;
-    [SerializeField] private Transform discardPilePos;
+    [SerializeField] private Transform discardParent;
 
     [Header("Card Data")]
     [SerializeField] private CardSO minus2;
@@ -39,7 +43,9 @@ public class Deck : MonoBehaviour
         for (int i = 0; i < _amount; i++)
         {
             Card card = Instantiate(cardPrefab, this.transform);
+            card.name = "Card" + _data.value.ToString();
             card.Init(_data);
+            card.clickableType = ClickableType.DrawPile;
             drawPile.Add(card);
         }
     }
@@ -58,10 +64,36 @@ public class Deck : MonoBehaviour
         return card;
     }
 
-    public void Discard(Card card)
+    public void Discard(Card _card)
     {
-        discardPile.Add(card);
-        card.transform.position = discardPilePos.position;
+        discardPile.Add(_card);
+        _card.clickableType = ClickableType.DiscardPile;
+
+        if (!_card.IsFaceUp)
+        {
+            _card.FlipCard();
+        }
+
+        _card.transform.SetParent(discardParent);
+        _card.transform.localScale = Vector3.one;
+    }
+
+    private void Update()
+    {
+        UpdatePosZCardDiscardpile();
+    }
+
+    private void UpdatePosZCardDiscardpile()
+    {
+        if (discardPile.Count > 0)
+        {
+            for (int i = 0; i < discardPile.Count; i++)
+            {
+                discardPile[i].transform.localPosition = new Vector3(0, 0, 1);
+            }
+    
+            discardPile[^1].transform.localPosition = Vector3.zero;
+        }
     }
 
     // Draw Card from DiscardPile
@@ -77,7 +109,6 @@ public class Deck : MonoBehaviour
         discardPile.RemoveAt(discardPile.Count - 1);
         return card;
     }
-
 
     // Shuffle the deck using the Fisher-Yates algorithm
     public void ShuffleDeck()
