@@ -1,8 +1,7 @@
-using System.Collections;
+ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.UI;
 
 public enum CardColor
 {
@@ -28,6 +27,7 @@ public class GameManager : MonoBehaviour
 {
     private enum TurnState
     {
+        WaitingStartReveal,
         WaitingDrawChoice,
         WaitingReplaceChoice,
         WaitingFlipChoice,
@@ -41,9 +41,7 @@ public class GameManager : MonoBehaviour
     public int nbPlayers = 2;
     private readonly List<Player> players = new();
     private int currentPlayerIndex;
-
-    [Header("Distance from the center")]
-    public float radius = 8f; // 7.5 bien
+    private ScoreSystem scoreSystem = new ScoreSystem();
 
     [Header("Cards Deck")]
     [SerializeField] private Deck deck;
@@ -52,11 +50,17 @@ public class GameManager : MonoBehaviour
     [Header("View")]
     [SerializeField] private PlayerView playerViewPrefab;
     [SerializeField] private Transform playersContainer;
-    [SerializeField] private GameObject discardButton;
+    [SerializeField] private BoardManager boardManager;
+    [SerializeField] private UIManager uIManager;
 
     private bool cardFromDiscardPile;
-    private bool lastRoundTriggered = false;
-    private int lastPlayerIndex = -1;
+    private bool lastRoundTriggered;
+    private int lastPlayerIndex;
+    private bool showNextTurnButton;
+    private bool showNewGameButton;
+    private bool isStartPhase;
+    private int revealCount;
+    private List<PlayerView> playerViews = new();
 
     private GameState currentState;
     private TurnState turnState;
@@ -64,14 +68,22 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        currentState = GameState.Setup;
-        currentPlayerIndex = 0;
-        cardFromDiscardPile = false;
         InitGame();
     }
 
     private void InitGame()
     {
+        lastRoundTriggered = false;
+        lastPlayerIndex = -1;
+        showNextTurnButton = false;
+        showNewGameButton = false;
+        revealCount = 0;
+        
+        isStartPhase = true;
+        currentState = GameState.Setup;
+        currentPlayerIndex = 0;
+        cardFromDiscardPile = false;
+
         deck.BuildDeck();
         deck.ShuffleDeck();
 
@@ -79,10 +91,8 @@ public class GameManager : MonoBehaviour
 
         DealCards();
 
-        ArrangeCard();
-        ArrangePlayer();
-
-        // RevealInitialCards();
+        boardManager.ArrangeCards();
+        boardManager.ArrangePlayers(nbPlayers);
         StartDiscardPile();
 
         StartTurn();
@@ -98,55 +108,6 @@ public class GameManager : MonoBehaviour
         deck.Discard(firstCard);
     }
 
-    private void ArrangeCard()
-    {
-        foreach (PlayerView _view in playersContainer.GetComponentsInChildren<PlayerView>())
-        {
-            _view.ArrangeCards();
-        }
-    }
-
-    // Display player grid in circle around center
-    private void ArrangePlayer()
-    {
-        int count = playersContainer.childCount;
-
-        for (int i = 0; i < count; i++)
-        {
-            Transform playerView = playersContainer.GetChild(i);
-
-            float angle = i * Mathf.PI * 2 / nbPlayers;
-
-            angle = angle - Mathf.PI / 2;
-
-            Vector3 pos = new Vector3(
-                Mathf.Cos(angle),
-                Mathf.Sin(angle),
-                0
-            ) * radius;
-
-            playerView.localPosition = pos;
-
-            RescaleGrid();
-        }
-    }
-
-    private void RescaleGrid()
-    {
-        // Rescale Grids depending to current Player
-        for (int i = 0; i < players.Count; i++)
-        {
-            if (i != currentPlayerIndex)
-            {
-                playersContainer.GetChild(i).localScale = Vector3.one * 0.8f;
-            }
-            else
-            {
-                playersContainer.GetChild(i).localScale = Vector3.one;
-            }
-        }
-    }
-
     // Create all Player and add them to the list
     private void InitPlayers()
     {
@@ -158,6 +119,7 @@ public class GameManager : MonoBehaviour
 
             PlayerView view = Instantiate(playerViewPrefab, playersContainer);
             view.Init(player); 
+            playerViews.Add(view);
         }
     }
 
@@ -175,18 +137,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // Before start partie, all players need to reveal 2 cards. For now [0] [1] but after, 2 cards they want to reveal
-    private void RevealInitialCards()
-    {
-        foreach (Player _p in players)
-        {
-            _p.FlipCard(_p.Hand[0]);
-            _p.FlipCard(_p.Hand[1]);
-        }
-    }
-
     private void StartTurn()
     {
+        if (isStartPhase)
+        {
+            turnState = TurnState.WaitingStartReveal;
+            revealCount = 0;
+            return;
+        }
+
         turnState = TurnState.WaitingDrawChoice;
         drawnCard = null;
 
@@ -196,7 +155,6 @@ public class GameManager : MonoBehaviour
     private void NextPlayer()
     {
         currentPlayerIndex++;
-        // Debug.Log($"<color=red>player++ {currentPlayerIndex}");
 
         if (currentPlayerIndex >= players.Count)
         {
@@ -219,20 +177,18 @@ public class GameManager : MonoBehaviour
             HandleClick(card);
         }
 
-        if (cardFromDiscardPile)
-        {
-            discardButton.SetActive(false);
-        }
-        else
-        {
-            discardButton.SetActive(true);
-        }
+        uIManager.UpdateDiscardButton(!cardFromDiscardPile);
+        uIManager.ShowNextTurn(showNextTurnButton);
+        uIManager.ShowNewGameButton(showNewGameButton);
     }
 
     private void HandleClick(Card _cardClicked)
     {
         switch (turnState)
         {
+            case TurnState.WaitingStartReveal:
+                HandleStartReveal(_cardClicked);
+            break;
             case TurnState.WaitingDrawChoice:
                 HandleDrawChoice(_cardClicked);
             break;
@@ -243,6 +199,43 @@ public class GameManager : MonoBehaviour
                 HandleFlip(_cardClicked);
             break;
         }
+    }
+
+    private void HandleStartReveal(Card _c)
+    {
+        if (_c.owner != players[currentPlayerIndex]) return;
+        if (_c.IsFaceUp) return;
+
+        _c.FlipCard();
+        revealCount++;
+
+        if (revealCount >= 2)
+        {
+            NextPlayer();
+            if (currentPlayerIndex == 0)
+            {
+                isStartPhase = false;
+                DetermineFirstPlayer();
+            }
+            StartTurn();
+        }
+    }
+
+    private void DetermineFirstPlayer()
+    {
+        int bestScore = 0;
+        int bestId = 0;
+
+        for (int i = 0; i < players.Count; i++)
+        {
+            int score = players[i].Score;
+            if (score > bestScore) // the one with the highest score starts
+            {
+                bestScore = score;
+                bestId = i;
+            }
+        }
+        currentPlayerIndex = bestId;
     }
 
     // Draw a card from drawpile or discardpile and show it
@@ -288,13 +281,8 @@ public class GameManager : MonoBehaviour
 
         drawnCard = null;
 
-        // Debug.Log($"Player {currentPlayerIndex} is replacing card at index {id} with {drawnCard.name}");
-
-        // Update visual
-        PlayerView pv = playersContainer.GetChild(currentPlayerIndex).GetComponent<PlayerView>();
-        pv.ArrangeCards();
-
-        CheckColumnClear();
+        PlayerView currentPv = playerViews[currentPlayerIndex];
+        boardManager.CheckColumnClear(currentPlayer, currentPv, deck);
 
         EndTurn();
     }
@@ -313,72 +301,16 @@ public class GameManager : MonoBehaviour
     {
         if (_card.clickableType != ClickableType.PlayerCard) return;
         if (_card.owner != players[currentPlayerIndex]) return;
+        if (_card.IsFaceUp) return;
 
-        _card.FlipCard();
+        Player currentPlayer = players[currentPlayerIndex];
+        PlayerView currentPv = playerViews[currentPlayerIndex];
 
-        CheckColumnClear();
+        currentPlayer.FlipCard(_card);
+
+        boardManager.CheckColumnClear(currentPlayer, currentPv, deck);
 
         EndTurn();
-    }
-
-    private void CheckColumnClear()
-    {
-        int rowCount = 3;
-        int columnCount = players[currentPlayerIndex].Hand.Count / rowCount;
-        List<Card> cardsToRemove = new List<Card>();
-
-        // each column
-        for (int col = 0; col < columnCount; col++)
-        {
-            bool sameNumber = true;
-            Card firstCard = null;
-            List<Card> columnCards = new List<Card>();
-
-            // each row
-            for (int row = 0; row < rowCount; row++)
-            {
-                int index = row * columnCount + col;
-                Card currentCard = players[currentPlayerIndex].Hand[index];
-                columnCards.Add(currentCard);
-
-                if (!currentCard.IsFaceUp)
-                {
-                    sameNumber = false;
-                    break;
-                }
-
-                if (row == 0)
-                {
-                    firstCard = currentCard;
-                }
-                else
-                {
-                    if (currentCard.Value != firstCard.Value)
-                    {
-                        sameNumber = false;
-                        break;
-                    }
-                }
-            }
-
-            if (sameNumber)
-            {
-                Debug.Log($"{col} same value");
-                
-                cardsToRemove.AddRange(columnCards);
-            }
-        }
-
-        foreach (Card card in cardsToRemove)
-        {
-            players[currentPlayerIndex].RemoveCard(card);
-            // Add them in discardPile
-            deck.Discard(card);
-        }
-
-        // Update visual
-        PlayerView pv = playersContainer.GetChild(currentPlayerIndex).GetComponent<PlayerView>();
-        pv.ArrangeCards();
     }
 
     private bool IsRoundFinished()
@@ -393,7 +325,6 @@ public class GameManager : MonoBehaviour
     private void EndTurn()
     {
         cardFromDiscardPile = false;
-        Player currentPlayer = players[currentPlayerIndex];
 
         if (IsRoundFinished() && !lastRoundTriggered)
         {
@@ -418,11 +349,118 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log($"<color=magenta> Round Finished");
 
-        foreach (Player player in players)
+        // Turn all the cards face up
+        foreach (Player p in players)
         {
-            player.FlipAllCard();
-            player.allScore += player.Score;
-            Debug.Log($"Player score : {player.allScore}");
+            p.FlipAllCard();
         }
+
+        var scores = scoreSystem.CalculateRoundScores(players);
+        Player triggeringPlayer = players[lastPlayerIndex];
+        scoreSystem.CheckScore(scores, triggeringPlayer);
+
+        foreach (var keyValuePair in scores)
+        {
+            keyValuePair.Key.AddScore(keyValuePair.Value);
+
+            PlayerView pv = playersContainer
+            .GetChild(players.IndexOf(keyValuePair.Key))
+            .GetComponent<PlayerView>();
+
+            pv.UpdateScore();
+
+            Debug.Log($"<color=yellow>Player {keyValuePair.Key.name} round: {keyValuePair.Value} total: {keyValuePair.Key.TotalScore}");
+        }
+
+        CheckEndGame();
+    }
+
+    private void CheckEndGame()
+    {
+        foreach (Player p in players)
+        {
+            if (p.TotalScore >= 100)
+            {
+                EndGame();
+            }
+            else
+            {
+                showNextTurnButton = true;
+            }
+        }
+    }
+
+    private void EndGame()
+    {
+        Player winner = players.OrderBy(p => p.TotalScore).First();
+
+        Debug.Log("GAME OVER - Winner is {winner.name} with {winner.TotalScore}");
+        showNextTurnButton = false;
+        showNewGameButton = true;
+    }
+
+    private void ResetGameState()
+    {
+        // Rest logic
+        lastRoundTriggered = false;
+        lastPlayerIndex = -1;
+        revealCount = 0;
+        isStartPhase = true;
+        currentPlayerIndex = 0;
+        cardFromDiscardPile = false;
+        drawnCard = null;
+    }
+
+    private void ResetRound()
+    {
+        ResetGameState();
+
+        // Reset UI
+        showNextTurnButton = false;
+        showNewGameButton = false;
+
+        // Reset deck
+        deck.ClearPiles();
+        deck.BuildDeck();
+        deck.ShuffleDeck();
+
+        // Destoy gameobject
+        foreach (Card c in playersContainer.GetComponentsInChildren<Card>())
+        {
+            Destroy(c.gameObject);
+        }
+
+        foreach (Player p in players)
+        {
+            p.ClearHand();
+        }
+
+        // Redistribute
+        DealCards();
+        boardManager.ArrangeCards();
+        boardManager.ArrangePlayers(nbPlayers);
+        StartDiscardPile();
+
+        // Start
+        StartTurn();
+    }
+
+    public void StartNewRound()
+    {
+        ResetRound();
+    }
+
+    public void ResetFullGame()
+    {
+        Debug.Log("FULL GAME RESET");
+
+        // Reset score
+        foreach (Player p in players)
+        {
+            p.ResetScore();
+        }
+
+        // Reset round
+        ResetRound();
     }
 }

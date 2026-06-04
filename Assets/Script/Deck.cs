@@ -3,11 +3,9 @@ using UnityEngine;
 
 public class Deck : MonoBehaviour
 {
-    // private readonly List<Card> drawPile = new List<Card>();
-    // private readonly List<Card> discardPile = new List<Card>();
+    private readonly List<Card> drawPile = new List<Card>();
+    private readonly List<Card> discardPile = new List<Card>();
 
-    public List<Card> drawPile = new List<Card>();
-    public List<Card> discardPile = new List<Card>();
     public Card TopDiscard => discardPile.Count > 0 ? discardPile[^1] : null;
 
     [SerializeField] private Card cardPrefab;
@@ -118,5 +116,23 @@ public class Deck : MonoBehaviour
             int j = Random.Range(0, i + 1);
             (drawPile[i], drawPile[j]) = (drawPile[j], drawPile[i]); // deconstructing tuples : swaps two values ​​without a temp var
         }
+    }
+
+    // Remove all cards
+    public void ClearPiles()
+    {
+        foreach (Card c in drawPile)
+        {
+            Destroy(c.gameObject);
+        }
+
+        foreach (Card c in discardPile)
+        {
+            Destroy(c.gameObject);
+        }
+
+        // Clear piles
+        discardPile.Clear();
+        drawPile.Clear();
     }
 }

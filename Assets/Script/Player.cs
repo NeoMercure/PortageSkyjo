@@ -10,7 +10,7 @@ public class Player
     // Same list! Under interface and read-only. The player remains in control of their hand
     public IReadOnlyList<Card> Hand => hand;
     public int Score => CalculateScore();
-    public int allScore = 0;
+    public int TotalScore {get; private set;}
 
     // Add a card to the player's hand
     public void AddCard(Card _card)
@@ -37,7 +37,6 @@ public class Player
     public void RemoveCard(Card _card)
     {
         hand.Remove(_card);
-        _card.FlipCard();
     }
     
     // Flip a card in the player's hand
@@ -60,6 +59,11 @@ public class Player
                 card.FlipCard();
             }
         }
+    }
+
+    public void AddScore(int _amount)
+    {
+        TotalScore += _amount;
     }
 
     // Calculate the player's score based on the cards in their hand and only if they are facingUp
@@ -86,5 +90,15 @@ public class Player
     public void SetPlayerName(string _str)
     {
         name = _str;
+    }
+
+    public void ClearHand()
+    {
+        hand.Clear();
+    }
+
+    public void ResetScore()
+    {
+        TotalScore = 0;
     }
 }

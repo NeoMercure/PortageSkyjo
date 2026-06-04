@@ -1,14 +1,23 @@
+using TMPro;
 using UnityEngine;
 
 public class PlayerView : MonoBehaviour
 {
+    [SerializeField] private TextMeshPro nameText;
+    [SerializeField] private TextMeshPro scoreText;
     [SerializeField] private Transform gridParent;
     private Player player;
 
     public void Init(Player _playerData)
     {
         player = _playerData;
+        nameText.text = _playerData.name;
         ArrangeCards();
+    }
+    
+    public void UpdateScore()
+    {
+        scoreText.text = player.TotalScore.ToString();
     }
 
     // Display Card in grid
@@ -17,8 +26,8 @@ public class PlayerView : MonoBehaviour
         int rowCount = 3;
         int columnCount = player.Hand.Count / rowCount;
         
-        float spacingX = 1.05f; // 1.1
-        float spacingY = 1.6f; // 1.6
+        float spacingX = 1.05f; // 1.05
+        float spacingY = 1.55f; // 1.6
 
         for (int i = 0; i < player.Hand.Count; i++)
         {
